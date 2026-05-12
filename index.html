@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TickerSync — Similarity Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--surface3:#2d333b;
+      --border:#30363d;--border2:#3d444d;
+      --blue:#58a6ff;--blue-bg:rgba(88,166,255,0.1);
+      --purple:#bc8cff;--purple-bg:rgba(188,140,255,0.1);
+      --green:#3fb950;--green-bg:rgba(63,185,80,0.1);
+      --yellow:#f0b429;--yellow-bg:rgba(240,180,41,0.1);
+      --red:#f85149;--red-bg:rgba(248,81,73,0.1);
+      --cyan:#39d0d0;--orange:#ff7b54;
+      --text:#f0f6fc;--text2:#c9d1d9;--text3:#8b949e;--text4:#484f58;
+      --sans:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
+      --r:8px;--rl:12px;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{height:100%;scroll-behavior:smooth}
+    body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;line-height:1.5}
+    ::-webkit-scrollbar{width:5px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+    header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+    .logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+    .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--blue),var(--purple));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;font-family:var(--mono)}
+    .logo-text{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-0.02em}
+    .logo-text span{color:var(--blue)}
+    .status-pill{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--text3);font-family:var(--mono)}
+    .sdot{width:7px;height:7px;border-radius:50%;background:var(--text4);transition:background .3s,box-shadow .3s;flex-shrink:0}
+    .sdot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:pdot 2s ease infinite}
+    @keyframes pdot{0%,100%{box-shadow:0 0 4px var(--green)}50%{box-shadow:0 0 14px var(--green)}}
+    .layout{display:grid;grid-template-columns:290px 1fr;min-height:calc(100vh - 58px)}
+    .sidebar{background:var(--surface);border-right:1px solid var(--border);padding:20px 14px;position:sticky;top:58px;height:calc(100vh - 58px);overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+    .sb-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rl);padding:14px}
+    .sb-title{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+    .search-wrap{position:relative;margin-bottom:8px}
+    .search-prefix{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--blue);font-family:var(--mono);font-weight:700;font-size:15px;pointer-events:none}
+    #ticker-input{width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:15px;font-weight:700;letter-spacing:.1em;padding:9px 10px 9px 28px;outline:none;text-transform:uppercase;transition:border-color .2s,box-shadow .2s}
+    #ticker-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(88,166,255,.15)}
+    #ticker-input::placeholder{color:var(--text4);font-weight:400;font-size:12px;text-transform:none;letter-spacing:0}
+    #search-btn{width:100%;background:linear-gradient(135deg,var(--blue),var(--purple));border:none;border-radius:var(--r);color:#fff;font-family:var(--sans);font-size:13px;font-weight:700;padding:9px;cursor:pointer;transition:opacity .2s,transform .1s}
+    #search-btn:hover{opacity:.9}
+    #search-btn:active{transform:scale(.98)}
+    #search-btn:disabled{opacity:.4;cursor:not-allowed}
+    #auto-ind{display:none;font-size:10px;color:var(--blue);text-align:center;margin-top:5px;font-family:var(--mono)}
+    .fg{margin-bottom:13px}
+    .fg:last-child{margin-bottom:0}
+    .fg-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+    .fg-name{font-size:12px;font-weight:500;color:var(--text2)}
+    .stepper{display:flex;align-items:center;background:var(--surface3);border:1px solid var(--border2);border-radius:6px;overflow:hidden}
+    .sbtn{background:none;border:none;color:var(--text3);font-size:16px;font-weight:700;width:26px;height:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;flex-shrink:0}
+    .sbtn:hover{background:var(--border);color:var(--blue)}
+    .sval{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--blue);min-width:40px;text-align:center;padding:0 3px;border-left:1px solid var(--border2);border-right:1px solid var(--border2);height:26px;display:flex;align-items:center;justify-content:center}
+    .fslider{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--surface3);outline:none;cursor:pointer;accent-color:var(--blue)}
+    .fslider::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--blue);cursor:pointer;box-shadow:0 0 4px rgba(88,166,255,.5)}
+    .fsel{width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-family:var(--sans);font-size:12px;padding:6px 9px;outline:none;cursor:pointer}
+    .fsel option{background:var(--surface2)}
+    .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+    .nbtn{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;color:var(--text3);font-size:10px;font-weight:600;padding:6px 3px;cursor:pointer;text-align:center;transition:all .15s}
+    .nbtn:hover{border-color:var(--purple);color:var(--purple)}
+    .nbtn.active{background:var(--purple-bg);border-color:var(--purple);color:var(--purple)}
+    #threshold-hint{display:none;margin-top:8px;padding:8px 11px;background:var(--yellow-bg);border:1px solid rgba(240,180,41,.4);border-radius:var(--r);font-size:11px;color:var(--yellow);cursor:pointer;line-height:1.5;transition:background .15s}
+    #threshold-hint:hover{background:rgba(240,180,41,.15)}
+    .main{padding:22px;overflow-y:auto}
+
+    /* Stats: 5 columns */
+    .stats-grid{display:none;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:22px}
+    .sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:14px}
+    .sc-label{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+    .sc-val{font-size:22px;font-weight:700;font-family:var(--mono);color:var(--text);line-height:1}
+    .sc-val.blue{color:var(--blue)}.sc-val.green{color:var(--green)}.sc-val.yellow{color:var(--yellow)}.sc-val.cyan{color:var(--cyan)}
+    .sec-title{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+    .badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--blue-bg);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+
+    /* Validation: 4 cards, no quality bar */
+    .val-sec{display:none;margin-bottom:22px}
+    .metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+    .mc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:13px}
+    .mc-label{font-size:11px;color:var(--text3);margin-bottom:3px;font-weight:500}
+    .mc-val{font-size:18px;font-weight:700;font-family:var(--mono);color:var(--text)}
+    .mc-desc{font-size:10px;color:var(--text4);margin-top:3px;line-height:1.4}
+    .mc-val.good{color:var(--green)}.mc-val.warn{color:var(--yellow)}.mc-val.bad{color:var(--red)}
+
+    /* Chart cards */
+    .charts-sec{display:none;margin-bottom:22px}
+    .charts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+    .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:14px;transition:border-color .2s;animation:fup .35s ease both;position:relative}
+    .chart-card:hover{border-color:var(--border2)}
+    .chart-card.expanded{grid-column:1/-1}
+    .chart-card.expanded canvas{height:260px !important}
+    .expand-btn{position:absolute;top:10px;right:10px;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text3);font-size:11px;padding:3px 7px;cursor:pointer;transition:all .15s;z-index:2;line-height:1}
+    .expand-btn:hover{border-color:var(--blue);color:var(--blue)}
+    .cc-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;padding-right:40px}
+    .cc-tickers{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+    .cc-ticker{font-family:var(--mono);font-size:15px;font-weight:700}
+    .cc-ticker.target{color:var(--yellow)}
+    .cc-name{font-size:10px;color:var(--text3);margin-top:3px}
+    .cc-corr{font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px}
+    .cc-corr.high{background:var(--green-bg);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+    .cc-corr.medium{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(240,180,41,.3)}
+    .cc-corr.low{background:var(--surface3);color:var(--text3);border:1px solid var(--border2)}
+    .cross-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:var(--orange);background:rgba(255,123,84,.12);border:1px solid rgba(255,123,84,.3);border-radius:20px;padding:2px 8px}
+
+    /* Results table: 5 columns — removed Common Window + Days */
+    .res-sec{display:none;margin-bottom:22px}
+    .res-table{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+    .th{display:grid;grid-template-columns:90px 130px 1fr 100px 70px;gap:10px;padding:9px 15px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+    .tr{display:grid;grid-template-columns:90px 130px 1fr 100px 70px;gap:10px;padding:11px 15px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;transition:background .15s;animation:fup .3s ease both}
+    .tr:last-child{border-bottom:none}
+    .tr:hover{background:var(--surface2)}
+    .ticker-pill{display:inline-flex;align-items:center;background:var(--blue-bg);border:1px solid rgba(88,166,255,.25);border-radius:6px;padding:3px 8px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--blue);transition:background .15s}
+    .tr:hover .ticker-pill{background:rgba(88,166,255,.2)}
+    .bar-wrap{display:flex;align-items:center;gap:9px}
+    .bar-bg{flex:1;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+    .bar-fg{height:100%;border-radius:3px;width:0%;transition:width .9s cubic-bezier(.23,1,.32,1)}
+    .bar-fg.high{background:linear-gradient(90deg,var(--green),#6ee7b7)}
+    .bar-fg.medium{background:linear-gradient(90deg,var(--yellow),#fde68a)}
+    .bar-fg.low{background:linear-gradient(90deg,var(--text3),var(--border2))}
+    .cn{font-family:var(--mono);font-size:12px;font-weight:700;min-width:42px;text-align:right}
+    .cn.high{color:var(--green)}.cn.medium{color:var(--yellow)}.cn.low{color:var(--text3)}
+    .sbadge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em}
+    .sbadge.high{background:var(--green-bg);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+    .sbadge.medium{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(240,180,41,.3)}
+    .sbadge.low{background:var(--surface3);color:var(--text3);border:1px solid var(--border2)}
+    .mt{font-size:11px;color:var(--text3);font-family:var(--mono)}
+    .sector-tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text3);border:1px solid var(--border2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:125px}
+    .sector-tag.cross{background:rgba(255,123,84,.12);color:var(--orange);border-color:rgba(255,123,84,.35)}
+    .state-box{background:var(--surface);border:1px dashed var(--border2);border-radius:var(--rl);padding:60px 24px;text-align:center}
+    .s-emoji{font-size:40px;margin-bottom:14px}
+    .s-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:7px}
+    .s-sub{font-size:13px;color:var(--text3);line-height:1.6}
+    .ldots{display:flex;gap:6px;justify-content:center;padding:44px}
+    .ld{width:8px;height:8px;border-radius:50%;background:var(--blue);animation:bd 1.2s ease-in-out infinite}
+    .ld:nth-child(2){animation-delay:.2s;background:var(--purple)}
+    .ld:nth-child(3){animation-delay:.4s;background:var(--cyan)}
+    @keyframes bd{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1.2);opacity:1}}
+    #toast{position:fixed;bottom:22px;right:22px;background:var(--surface2);border:1px solid var(--red);border-radius:var(--r);color:var(--red);font-size:13px;padding:11px 15px;display:none;z-index:999;max-width:300px;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:fup .3s ease}
+    @keyframes fup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .chart-card:nth-child(1){animation-delay:.04s}.chart-card:nth-child(2){animation-delay:.08s}
+    .chart-card:nth-child(3){animation-delay:.12s}.chart-card:nth-child(4){animation-delay:.16s}
+    .chart-card:nth-child(5){animation-delay:.20s}.chart-card:nth-child(6){animation-delay:.24s}
+    .tr:nth-child(1){animation-delay:.03s}.tr:nth-child(2){animation-delay:.06s}
+    .tr:nth-child(3){animation-delay:.09s}.tr:nth-child(4){animation-delay:.12s}
+    .tr:nth-child(5){animation-delay:.15s}.tr:nth-child(6){animation-delay:.18s}
+    .div{height:1px;background:var(--border);margin:10px 0}
+    /* Score formula tooltip */
+    .score-tip{position:relative;cursor:help}
+    .score-tip .tip-box{
+      display:none;position:absolute;bottom:calc(100% + 6px);left:50%;
+      transform:translateX(-50%);background:#1c2128;border:1px solid var(--border2);
+      border-radius:8px;padding:10px 13px;white-space:nowrap;z-index:100;
+      font-family:var(--mono);font-size:10px;line-height:1.9;
+      box-shadow:0 8px 24px rgba(0,0,0,.5);pointer-events:none;
+    }
+    .score-tip:hover .tip-box{display:block}
+    .tip-row{display:flex;justify-content:space-between;gap:20px}
+    .tip-row span:last-child{color:var(--text2);font-weight:600}
+    .tip-total{border-top:1px solid var(--border);margin-top:4px;padding-top:4px;color:var(--blue);font-weight:700}
+    /* Chart mode toggle buttons */
+    .mode-btn{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;color:var(--text3);font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer;transition:all .15s}
+    .mode-btn:hover{border-color:var(--blue);color:var(--blue)}
+    .mode-btn.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+    .mode-btn{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;color:var(--text3);font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer;transition:all .15s}
+    .mode-btn:hover{border-color:var(--blue);color:var(--blue)}
+    .mode-btn.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+    /* Full Market Scan */
+    .fm-sec{margin-bottom:22px}
+    .fm-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+    .fm-input{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;font-weight:700;padding:6px 10px;width:70px;outline:none;text-align:center}
+    .fm-input:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(88,166,255,.15)}
+    .fm-scan-btn{background:linear-gradient(135deg,var(--purple),var(--blue));border:none;border-radius:var(--r);color:#fff;font-family:var(--sans);font-size:12px;font-weight:700;padding:7px 16px;cursor:pointer;transition:opacity .2s}
+    .fm-scan-btn:hover{opacity:.85}
+    .fm-scan-btn:disabled{opacity:.4;cursor:not-allowed}
+    .fm-stats{font-size:11px;color:var(--text3);font-family:var(--mono);display:flex;gap:14px;flex-wrap:wrap}
+    .fm-stat{display:flex;align-items:center;gap:5px}
+    .fm-stat span{color:var(--blue);font-weight:700}
+    .fm-grid{display:flex;flex-direction:column;gap:8px}
+    .fm-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:border-color .15s}
+    .fm-row:hover{border-color:var(--border2)}
+    .fm-row-header{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none}
+    .fm-row-header:hover{background:var(--surface2)}
+    .fm-anchor{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--yellow);min-width:60px}
+    .fm-anchor-name{font-size:11px;color:var(--text3);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .fm-peer-count{font-size:10px;font-weight:700;background:var(--blue-bg);color:var(--blue);border:1px solid rgba(88,166,255,.25);border-radius:20px;padding:2px 8px;font-family:var(--mono);white-space:nowrap}
+    .fm-chevron{color:var(--text4);font-size:12px;transition:transform .2s;margin-left:auto}
+    .fm-row.open .fm-chevron{transform:rotate(180deg)}
+    .fm-peers{display:none;padding:0 14px 12px;border-top:1px solid var(--border);flex-wrap:wrap;gap:6px}
+    .fm-row.open .fm-peers{display:flex}
+    .fm-peer-chip{display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 9px;cursor:pointer;transition:all .15s}
+    .fm-peer-chip:hover{border-color:var(--blue);background:var(--blue-bg)}
+    .fm-peer-ticker{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--blue)}
+    .fm-peer-corr{font-family:var(--mono);font-size:11px;font-weight:700}
+    .fm-peer-corr.high{color:var(--green)}.fm-peer-corr.medium{color:var(--yellow)}.fm-peer-corr.low{color:var(--text3)}
+    .fm-empty{text-align:center;padding:40px;color:var(--text3);font-size:13px}
+    .fm-search-filter{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;padding:6px 10px;outline:none;width:180px}
+    .fm-search-filter:focus{border-color:var(--blue)}
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="#">
+    <div class="logo-icon">T</div>
+    <span class="logo-text">Ticker<span>Sync</span></span>
+  </a>
+  <div class="status-pill">
+    <div class="sdot" id="sdot"></div>
+    <span id="hstatus">Connecting...</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+
+    <div class="sb-card">
+      <div class="sb-title">🔍 Search Ticker</div>
+      <div class="search-wrap">
+        <span class="search-prefix">$</span>
+        <input type="text" id="ticker-input" placeholder="e.g. NVDA, AAPL..."
+          autocomplete="off" list="ticker-datalist" spellcheck="false"/>
+        <datalist id="ticker-datalist"></datalist>
+      </div>
+      <button id="search-btn">Scan Market</button>
+      <div id="auto-ind">⟳ auto-updating...</div>
+    </div>
+
+    <div class="sb-card">
+      <div class="sb-title">⚙️ Filters</div>
+      <div class="fg">
+        <div class="fg-header">
+          <span class="fg-name">Min Correlation</span>
+          <div class="stepper">
+            <button class="sbtn" id="corr-minus">−</button>
+            <div class="sval" id="corr-display">—</div>
+            <button class="sbtn" id="corr-plus">+</button>
+          </div>
+        </div>
+        <input type="range" class="fslider" id="filter-corr"/>
+      </div>
+
+      <div class="fg">
+        <div class="fg-header">
+          <span class="fg-name">Min Score</span>
+          <div class="stepper">
+            <button class="sbtn" id="score-minus">−</button>
+            <div class="sval" id="score-display">—</div>
+            <button class="sbtn" id="score-plus">+</button>
+          </div>
+        </div>
+        <input type="range" class="fslider" id="filter-score" min="0.40" max="0.90" step="0.01" value="0.65"/>
+      </div>
+      <div id="threshold-hint" onclick="applyHint()"></div>
+    </div>
+
+    <div class="sb-card">
+      <div class="sb-title">🌐 Full Market Scan</div>
+      <div class="fg">
+        <div class="fg-header">
+          <span class="fg-name">Min Correlation</span>
+          <div class="stepper">
+            <button class="sbtn" id="fm-corr-minus">−</button>
+            <div class="sval" id="fm-corr-display">0.65</div>
+            <button class="sbtn" id="fm-corr-plus">+</button>
+          </div>
+        </div>
+        <input type="range" class="fslider" id="fm-filter-corr" min="0.30" max="0.99" step="0.01" value="0.65"/>
+      </div>
+      <div class="fg">
+        <div class="fg-header">
+          <span class="fg-name">Min Score</span>
+          <div class="stepper">
+            <button class="sbtn" id="fm-score-minus">−</button>
+            <div class="sval" id="fm-score-display">0.65</div>
+            <button class="sbtn" id="fm-score-plus">+</button>
+          </div>
+        </div>
+        <input type="range" class="fslider" id="fm-filter-score" min="0.40" max="0.90" step="0.01" value="0.65"/>
+      </div>
+      <button id="fm-scan-btn" class="fm-scan-btn" style="width:100%;margin-top:4px">🌐 Scan All Tickers</button>
+      <div id="fm-auto-ind" style="display:none;font-size:10px;color:var(--purple);text-align:center;margin-top:5px;font-family:var(--mono)">⟳ scanning...</div>
+    </div>
+
+  </aside>
+
+  <main class="main" id="main">
+
+    <!-- Stats: 5 boxes -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="sc">
+        <div class="sc-label">Target</div>
+        <div class="sc-val blue" id="sv-target">—</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px" id="sv-target-name"></div>
+      </div>
+      <div class="sc">
+        <div class="sc-label">Matches</div>
+        <div class="sc-val green" id="sv-found">—</div>
+      </div>
+      <div class="sc">
+        <div class="sc-label">Top Correlation</div>
+        <div class="sc-val yellow" id="sv-topcorr">—</div>
+      </div>
+      <div class="sc">
+        <div class="sc-label">Data Window</div>
+        <div class="sc-val cyan" id="sv-window" style="font-size:12px">—</div>
+      </div>
+      <div class="sc">
+        <div class="sc-label">Cross-Sector</div>
+        <div class="sc-val" id="sv-cross" style="color:var(--orange)">—</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">behavioral peers</div>
+      </div>
+    </div>
+
+    <!-- Validation: 4 cards -->
+    <div class="val-sec" id="val-sec">
+      <div class="sec-title">Validation Metrics <span class="badge">How reliable are these results?</span></div>
+      <div class="metrics-grid">
+        <div class="mc">
+          <div class="mc-label">Data Confidence</div>
+          <div class="mc-val" id="vm-conf">—</div>
+          <div class="mc-desc" id="vm-days-desc">Based on target's trading day count.</div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">Avg Overlap Days</div>
+          <div class="mc-val" id="vm-overlap">—</div>
+          <div class="mc-desc">Average shared history across matched pairs. Higher is better.</div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">Avg Stability</div>
+          <div class="mc-val" id="vm-stability">—</div>
+          <div class="mc-desc">Rolling correlation consistency. STABLE = relationship held steady across all time periods.</div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">Avg Beta Gap</div>
+          <div class="mc-val" id="vm-betagap">—</div>
+          <div class="mc-desc" id="vm-betagap-desc">Raw minus beta-adjusted corr. GENUINE = real similarity. MARKET-DRIVEN = mostly SPY noise.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-sec" id="charts-sec">
+      <div class="sec-title" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          Individual Charts <span class="badge" id="charts-badge">0 tickers</span>
+        </div>
+        <div id="chart-mode-toggle" style="display:flex;gap:4px;align-items:center">
+          <span style="font-size:11px;color:var(--text3);margin-right:4px">Chart:</span>
+          <button id="mode-pct"    class="mode-btn"        onclick="setChartMode('pct')">% Return</button>
+          <button id="mode-zscore" class="mode-btn active" onclick="setChartMode('zscore')">Z-Score</button>
+          <button id="mode-adj_return" class="mode-btn"        onclick="setChartMode('adj_return')" title="Beta-adjusted cumulative return — SPY market effect stripped. Matches adj corr number.">Adj Return</button>
+        </div>
+      </div>
+      <div class="charts-grid" id="charts-grid"></div>
+    </div>
+
+    <!-- Results table: 5 cols -->
+    <div class="res-sec" id="res-sec">
+      <div class="sec-title">Similar Tickers <span class="badge" id="res-badge">0 found</span></div>
+      <div class="res-table">
+        <div class="th">
+          <div>Ticker</div>
+          <div>Sector</div>
+          <div>Score</div>
+          <div>Strength</div>
+          <div>Ann.Vol</div>
+        </div>
+        <div id="res-body"></div>
+      </div>
+    </div>
+
+    <div id="empty-state">
+      <div class="state-box">
+        <div class="s-emoji">📡</div>
+        <div class="s-title">Ready to scan</div>
+        <div class="s-sub">Enter a ticker in the sidebar and press Scan Market<br/>to find similar moving stocks.<br/><br/>Or use <strong>Full Market Scan</strong> to see all correlated pairs at once.</div>
+      </div>
+    </div>
+
+    <!-- Full Market Scan Results -->
+    <div class="fm-sec" id="fm-sec" style="display:none">
+      <div class="sec-title" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          🌐 Full Market Correlation Map
+          <span class="badge" id="fm-badge">0 tickers</span>
+        </div>
+        <input type="text" class="fm-search-filter" id="fm-search" placeholder="🔍 Filter ticker..." oninput="filterFmResults()"/>
+      </div>
+      <div class="fm-stats" id="fm-stats" style="margin-bottom:12px"></div>
+      <div class="fm-grid" id="fm-grid"></div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const API = "";
+
+  const tickerInput    = document.getElementById("ticker-input");
+  const searchBtn      = document.getElementById("search-btn");
+  const datalist       = document.getElementById("ticker-datalist");
+  const filterCorr  = document.getElementById("filter-corr");
+  const filterScore = document.getElementById("filter-score");
+  const corrDisp    = document.getElementById("corr-display");
+  const scoreDisp   = document.getElementById("score-display");
+  const thintEl        = document.getElementById("threshold-hint");
+  const statsGrid      = document.getElementById("stats-grid");
+  const valSec         = document.getElementById("val-sec");
+  const chartsSec      = document.getElementById("charts-sec");
+  const chartsGrid     = document.getElementById("charts-grid");
+  const resSec         = document.getElementById("res-sec");
+  const resBody        = document.getElementById("res-body");
+  const emptyState     = document.getElementById("empty-state");
+
+  let _hint     = null;
+  let _charts   = {};
+  let _lastData = null;
+  let _debTimer = null;
+
+  function toast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = "⚠ " + msg;
+    t.style.display = "block";
+    setTimeout(() => t.style.display = "none", 4000);
+  }
+
+  function setStatus(txt, live = false) {
+    document.getElementById("hstatus").textContent = txt;
+    document.getElementById("sdot").className = "sdot" + (live ? " live" : "");
+  }
+
+  function cls(c) { return c >= 0.85 ? "high" : c >= 0.70 ? "medium" : "low"; }
+
+  function syncCorr()  { corrDisp.textContent  = parseFloat(filterCorr.value).toFixed(2); }
+  function syncScore() { scoreDisp.textContent = parseFloat(filterScore.value).toFixed(2); }
+
+  function makeStep(slider, syncFn, step) {
+    return dir => {
+      let v = Math.round((parseFloat(slider.value) + dir * step) * 1e4) / 1e4;
+      v = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), v));
+      slider.value = v; syncFn(); debSearch();
+    };
+  }
+
+  const stepCorr  = makeStep(filterCorr,  syncCorr,  0.01);
+  const stepScore = makeStep(filterScore, syncScore, 0.01);
+
+  document.getElementById("corr-minus").onclick  = () => stepCorr(-1);
+  document.getElementById("corr-plus").onclick   = () => stepCorr(+1);
+  document.getElementById("score-minus").onclick = () => stepScore(-1);
+  document.getElementById("score-plus").onclick  = () => stepScore(+1);
+
+  filterCorr.oninput  = () => { syncCorr();  debSearch(); };
+  filterScore.oninput = () => { syncScore(); debSearch(); };
+
+  function debSearch(immediate = false) {
+    const ai = document.getElementById("auto-ind");
+    clearTimeout(_debTimer);
+    if (!tickerInput.value.trim()) return;
+    if (immediate) { runSearch(); return; }
+    ai.style.display = "block";
+    _debTimer = setTimeout(() => { ai.style.display = "none"; runSearch(); }, 600);
+  }
+
+  function applyHint() {
+    if (!_hint) return;
+    filterCorr.value = _hint; syncCorr();
+    thintEl.style.display = "none";
+    debSearch(true);
+  }
+
+  async function loadTickers() {
+    try {
+      setStatus("Connecting...");
+      const [tr, cr] = await Promise.all([fetch(`${API}/api/tickers`), fetch(`${API}/api/config`)]);
+      const td = await tr.json(), cd = await cr.json();
+      if (td.error) throw new Error(td.error);
+
+      const R = cd.slider_ranges, D = cd.defaults;
+      Object.assign(filterCorr, R.min_correlation);
+      filterCorr.value  = D.min_correlation;
+      filterScore.value = D.min_score ?? 0.65;
+      syncCorr(); syncScore();
+
+      td.tickers.forEach(t => {
+        const o = document.createElement("option"); o.value = t; datalist.appendChild(o);
+      });
+      setStatus(`${td.count} tickers loaded`, true);
+    } catch(e) {
+      setStatus("Connection failed");
+      toast("Cannot connect to Flask. Is sector_metadata.py running?");
+    }
+  }
+
+  searchBtn.onclick = () => debSearch(true);
+  tickerInput.onkeydown = e => { if (e.key === "Enter") debSearch(true); };
+
+  async function runSearch() {
+    const ticker = tickerInput.value.trim().toUpperCase();
+    if (!ticker) { toast("Enter a ticker symbol."); return; }
+
+    thintEl.style.display = "none"; _hint = null;
+    searchBtn.disabled = true; searchBtn.textContent = "Scanning...";
+    setStatus(`Scanning ${ticker}...`);
+    statsGrid.style.display = "none";
+    valSec.style.display = "none";
+    chartsSec.style.display = "none";
+    resSec.style.display = "none";
+    emptyState.innerHTML = `<div class="state-box"><div class="ldots"><div class="ld"></div><div class="ld"></div><div class="ld"></div></div><div class="s-sub" style="margin-top:4px">Scanning ${ticker}...</div></div>`;
+    emptyState.style.display = "block";
+
+    try {
+      const payload = {
+        ticker,
+        min_correlation: parseFloat(filterCorr.value),
+        min_score:       parseFloat(filterScore.value),
+      };
+
+      const res = await fetch(`${API}/api/search`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      });
+
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        const text = await res.text();
+        const m = text.match(/(ValueError|TypeError|KeyError|AttributeError|NameError)[^<]*/);
+        throw new Error("Flask error: " + (m ? m[0] : "Check terminal for traceback"));
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Search failed");
+      _lastData = data;
+      render(data);
+    } catch(e) {
+      emptyState.innerHTML = `<div class="state-box"><div class="s-emoji">⚠️</div><div class="s-title">Error</div><div class="s-sub">${e.message}</div></div>`;
+      setStatus("Error");
+      toast(e.message);
+    } finally {
+      searchBtn.disabled = false;
+      searchBtn.textContent = "Scan Market";
+    }
+  }
+
+  function render(data) {
+    const { target, results, total_found, settings_used } = data;
+    emptyState.style.display = "none";
+
+    // Stats — 5 boxes (no Target Vol)
+    document.getElementById("sv-target").textContent = target;
+    document.getElementById("sv-target-name").textContent =
+      (data.target_name || "") +
+      (data.target_sector && data.target_sector !== "Unknown" ? ` · ${data.target_sector}` : "");
+    document.getElementById("sv-found").textContent   = total_found;
+    document.getElementById("sv-topcorr").textContent = results.length ? results[0].correlation.toFixed(4) : "—";
+    document.getElementById("sv-window").textContent  = data.target_start
+      ? `${data.target_start} → ${data.target_end}` : "—";
+
+    const crossCount = data.cross_sector_count ?? 0;
+    const crossEl = document.getElementById("sv-cross");
+    crossEl.textContent = crossCount;
+    crossEl.style.color = crossCount > 0 ? "var(--orange)" : "var(--text3)";
+
+    statsGrid.style.display = "grid";
+    setStatus(`${total_found} matches for ${target}${crossCount > 0 ? ` · ${crossCount} cross-sector` : ""}`, true);
+
+    if (data.suggested_min_corr !== undefined && data.suggested_min_corr < settings_used.min_correlation) {
+      _hint = data.suggested_min_corr;
+      thintEl.style.display = "block";
+      thintEl.innerHTML = `⚡ <strong>${target}</strong> has limited history. Suggested threshold: <strong>${data.suggested_min_corr.toFixed(2)}</strong> (best found: ${data.top_correlation_found?.toFixed(4) ?? "—"}). Click to apply.`;
+    }
+
+    renderValidation(data, results);
+
+    if (!results.length) {
+      emptyState.innerHTML = `<div class="state-box"><div class="s-emoji">🔎</div><div class="s-title">No matches found</div><div class="s-sub">No tickers above ${settings_used.min_correlation} correlation for ${target}.<br/>Try lowering Min Correlation with the − button.</div></div>`;
+      emptyState.style.display = "block";
+      return;
+    }
+
+    renderCharts(data);
+    renderTable(results, target);
+  }
+
+  function renderValidation(data, results) {
+    if (!results.length) return;
+    valSec.style.display = "block";
+
+    // 1. Data Confidence
+    const days = data.trading_days || 0;
+    let conf, confCls;
+    if      (days >= 1500) { conf = "HIGH";   confCls = "good"; }
+    else if (days >= 500)  { conf = "MEDIUM"; confCls = "warn"; }
+    else                   { conf = "LOW";    confCls = "bad";  }
+    document.getElementById("vm-conf").textContent = conf;
+    document.getElementById("vm-conf").className   = "mc-val " + confCls;
+    document.getElementById("vm-days-desc").textContent =
+      `${days} trading days. ` +
+      (days >= 1500 ? "Sufficient history." : days >= 500 ? "Moderate history." : "Limited — treat with caution.");
+
+    // 2. Avg Overlap Days
+    const avgOv = Math.round(results.reduce((s,r) => s + r.overlap_days, 0) / results.length);
+    const ovCls = avgOv >= 400 ? "good" : avgOv >= 200 ? "warn" : "bad";
+    document.getElementById("vm-overlap").textContent = avgOv + "d";
+    document.getElementById("vm-overlap").className   = "mc-val " + ovCls;
+
+    // 3. Avg Rolling Stability
+    // WHY average? → Each result has its own stability score (how consistent the
+    // correlation was over rolling 63-day windows). Averaging gives an overall
+    // signal: "across ALL your matches, is the relationship stable over time?"
+    // STABLE (≥0.75) → relationships held consistently → trustworthy results
+    // MODERATE (≥0.55) → some drift but mostly OK
+    // UNSTABLE (<0.55) → correlations fluctuated a lot → treat with caution
+    const stabs = results.map(r => r.stability).filter(s => s != null);
+    if (stabs.length) {
+      const avg = stabs.reduce((a,b) => a+b, 0) / stabs.length;
+      const cls = avg >= 0.75 ? "good" : avg >= 0.55 ? "warn" : "bad";
+      const lbl = avg >= 0.75 ? "STABLE" : avg >= 0.55 ? "MODERATE" : "UNSTABLE";
+      document.getElementById("vm-stability").textContent = lbl;
+      document.getElementById("vm-stability").className   = "mc-val " + cls;
+    }
+
+    // 4. Avg Beta Gap
+    // WHY: beta_gap = raw_correlation - beta_adjusted_correlation
+    // The backend computes both (raw Pearson, and residual-based after stripping SPY).
+    // A large gap means the two stocks' apparent similarity disappears once you
+    // remove their common market exposure — they only "correlate" because both
+    // go up/down with SPY, not because of any real behavioral kinship.
+    // A near-zero gap means they move together EVEN AFTER stripping market noise.
+    //
+    // Display: show avg gap value + qualitative label
+    //   GENUINE      < 0.05  → gap is tiny, similarity is real
+    //   MIXED        0.05–0.15 → some real signal, some market noise
+    //   MARKET-DRIVEN > 0.15  → similarity is mostly beta exposure to SPY
+    const gaps = results.map(r => r.beta_gap).filter(g => g != null && !isNaN(g));
+    const betagapEl = document.getElementById("vm-betagap");
+    const betagapDesc = document.getElementById("vm-betagap-desc");
+    if (gaps.length && data.beta_adjustment) {
+      const avg = gaps.reduce((a,b) => a+b, 0) / gaps.length;
+      const cls = avg < 0.05 ? "good" : avg < 0.15 ? "warn" : "bad";
+      const lbl = avg < 0.05 ? "GENUINE" : avg < 0.15 ? "MIXED" : "MKT-DRIVEN";
+      betagapEl.textContent = lbl;
+      betagapEl.className   = "mc-val " + cls;
+      if (betagapDesc) betagapDesc.textContent =
+        `Avg gap: ${avg >= 0 ? "+" : ""}${avg.toFixed(3)}. ` +
+        (avg < 0.05 ? "Real similarity, survives market stripping."
+          : avg < 0.15 ? "Partial genuine signal, partial SPY noise."
+          : "Similarity mostly from market beta. Strip SPY → they diverge.");
+    } else {
+      betagapEl.textContent = data.beta_adjustment ? "—" : "N/A";
+      betagapEl.className   = "mc-val";
+      if (betagapDesc) betagapDesc.textContent = data.beta_adjustment
+        ? "Insufficient data to compute gap."
+        : "Beta adjustment disabled (SPY not available).";
+    }
+  }
+
+  function redrawCharts() { if (_lastData) renderCharts(_lastData); }
+
+  const palette = ["#58a6ff","#bc8cff","#39d0d0","#3fb950","#f0b429","#ff7b54","#f85149","#a5d6ff","#d2a8ff","#7ee787"];
+
+  function renderCharts(data) {
+    chartsSec.style.display = "block";
+    Object.values(_charts).forEach(c => { try { c.destroy(); } catch(e){} });
+    _charts = {};
+    chartsGrid.innerHTML = "";
+
+    const { target, results, chart_data_by_ticker } = data;
+    if (!chart_data_by_ticker || !results.length) return;
+    document.getElementById("charts-badge").textContent = results.length + " tickers";
+
+    const isPct = _chartMode === "pct";
+
+    results.forEach((r, idx) => {
+      const pairEntry = chart_data_by_ticker[r.ticker];
+      if (!pairEntry) return;
+      const pairData = pairEntry[_chartMode];
+      if (!pairData || !pairData.length) return;
+      const pairLabels = pairData.map(row => row.date);
+
+      const card = document.createElement("div");
+      card.className = "chart-card";
+      const c = cls(r.correlation);
+      const crossHtml = r.cross_sector ? `<span class="cross-badge">⚡ Cross-Sector</span>` : "";
+      const safeId = r.ticker.replace(/[^a-zA-Z0-9]/g, '_');
+
+      const isAdj = _chartMode === "adj_return";
+      const isPct = _chartMode === "pct";
+
+      // Show adj corr when chart is beta-adjusted, raw corr otherwise
+      const corrValue = isAdj ? r.correlation : (r.raw_correlation ?? r.correlation);
+      const corrLabel = isAdj ? "adj corr" : "raw corr";
+
+      card.innerHTML = `
+        <button class="expand-btn" title="Expand chart" onclick="toggleExpand(this)">⤢</button>
+        <div class="cc-header">
+          <div>
+            <div class="cc-tickers">
+              <span class="cc-ticker" style="color:${palette[idx%palette.length]}">${r.ticker}</span>
+              ${crossHtml}
+              <span style="color:var(--text3);font-size:12px">vs</span>
+              <span class="cc-ticker target">${target}</span>
+            </div>
+            <div class="cc-name">
+              ${r.name || r.ticker}
+              ${r.sector && r.sector !== "Unknown" ? ` · ${r.sector}` : ""}
+              · Vol: ${r.volatility}%
+              · Stability: ${(r.stability * 100).toFixed(0)}%
+              ${(r.beta_gap != null) ? ` · Beta Gap: ${r.beta_gap > 0 ? "+" : ""}${r.beta_gap.toFixed(3)}` : ""}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <span class="cc-corr ${c}">${corrValue.toFixed(4)}</span>
+            <div style="font-size:9px;color:var(--text3);margin-top:3px;font-family:var(--mono)">${corrLabel}</div>
+          </div>
+        </div>
+        <canvas id="cc-${safeId}" height="90"></canvas>`;
+
+      chartsGrid.appendChild(card);
+
+      const tVals = getSeries(pairData, target);
+      const rVals = getSeries(pairData, r.ticker);
+      const tc = "#f0b429";
+      const rc = palette[idx % palette.length];
+
+      const tooltipLabel = (_chartMode === "zscore")
+        ? ctx => { const v = ctx.parsed.y; return v == null ? null : ` ${ctx.dataset.label}: ${v >= 0 ? "+" : ""}${v.toFixed(2)}σ`; }
+        : ctx => { const v = ctx.parsed.y; return v == null ? null : ` ${ctx.dataset.label}: ${v >= 0 ? "+" : ""}${v.toFixed(2)}%`; };
+
+      const yTickCb = (_chartMode === "zscore")
+        ? v => (v >= 0 ? "+" : "") + v.toFixed(2) + "σ"
+        : v => (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+
+      const ctx = document.getElementById(`cc-${safeId}`).getContext("2d");
+      _charts[r.ticker] = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: pairLabels,
+          datasets: [
+            { label: target,   data: tVals, borderColor: tc, backgroundColor: tc+"15", borderWidth: 2,   pointRadius: 0, tension: .1, spanGaps: true, fill: true  },
+            { label: r.ticker, data: rVals, borderColor: rc, backgroundColor: rc+"15", borderWidth: 1.5, pointRadius: 0, tension: .1, spanGaps: true, fill: false },
+          ]
+        },
+        options: {
+          animation: false, responsive: true,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { labels: { color: "#8b949e", font: { family: "JetBrains Mono", size: 10 }, boxWidth: 10, padding: 10 } },
+            tooltip: {
+              backgroundColor: "#161b22", borderColor: "#30363d", borderWidth: 1,
+              titleColor: "#f0b429", bodyColor: "#8b949e",
+              titleFont: { family: "JetBrains Mono", size: 10 },
+              bodyFont:  { family: "JetBrains Mono", size: 10 },
+              callbacks: { label: tooltipLabel }
+            }
+          },
+          scales: {
+            x: { ticks: { color: "#484f58", font: { size: 9, family: "JetBrains Mono" }, maxTicksLimit: 6, maxRotation: 0 }, grid: { color: "#21262d" } },
+            y: { ticks: { color: "#484f58", font: { size: 9, family: "JetBrains Mono" }, callback: yTickCb }, grid: { color: "#21262d" } }
+          }
+        }
+      });
+    });
+  }
+
+  // Expand / collapse a chart card to full grid width
+  function toggleExpand(btn) {
+    const card = btn.closest(".chart-card");
+    const expanded = card.classList.toggle("expanded");
+    btn.textContent = expanded ? "⤡" : "⤢";
+    btn.title = expanded ? "Collapse" : "Expand chart";
+    // Trigger Chart.js resize so it redraws at the new card width
+    const safeId = card.querySelector("canvas").id.replace("cc-", "");
+    Object.entries(_charts).forEach(([ticker, chart]) => {
+      if (ticker.replace(/[^a-zA-Z0-9]/g, '_') === safeId) chart.resize();
+    });
+  }
+
+  // ── Chart mode state ────────────────────────────────────────────────────
+  // "pct"    = cumulative % return, anchored to overlap start (both start at 0%)
+  // "zscore" = (price - mean) / std over the overlap window (both normalized to 0σ mean)
+  // Both datasets are pre-computed by the backend. Toggle is instant — no re-fetch.
+  let _chartMode = "zscore";
+
+  function setChartMode(mode) {
+    _chartMode = mode;
+    document.getElementById("mode-pct").classList.toggle("active",        mode === "pct");
+    document.getElementById("mode-zscore").classList.toggle("active",     mode === "zscore");
+    document.getElementById("mode-adj_return").classList.toggle("active", mode === "adj_return");
+    redrawCharts();
+  }
+
+  function getSeries(chartData, ticker) {
+    return chartData.map(row => {
+      const v = row[ticker];
+      return v == null ? null : v;
+    });
+  }
+
+  function renderTable(results, target) {
+    resSec.style.display = "block";
+    document.getElementById("res-badge").textContent = results.length + " found";
+
+    resBody.innerHTML = results.map((r, i) => {
+      const c        = cls(r.correlation);
+      const scorePct = Math.max(0, Math.min(100, (r.score       - 0.40) / 0.50 * 100)).toFixed(1);
+      const corrPct  = Math.max(0, Math.min(100, (r.correlation - 0.30) / 0.70 * 100)).toFixed(1);
+      // Bar width and primary number follow the active rank mode
+      const barPct = scorePct;
+      const lbl      = r.score >= 0.75 ? "Strong" : r.score >= 0.65 ? "Good" : "Moderate";
+      const sectorHtml = r.sector && r.sector !== "Unknown"
+        ? `<span class="sector-tag ${r.cross_sector ? "cross" : ""}">${r.cross_sector ? "⚡ " : ""}${r.sector}</span>`
+        : `<span style="color:var(--text4);font-size:10px">—</span>`;
+
+      return `
+        <div class="tr" style="animation-delay:${i*.03}s"
+          onclick="tickerInput.value='${r.ticker}'; debSearch(true);"
+          title="${r.name || r.ticker} — click to search">
+          <div><span class="ticker-pill">${r.ticker}</span></div>
+          <div style="overflow:hidden">${sectorHtml}</div>
+          <div class="bar-wrap">
+            <div class="bar-bg">
+              <div class="bar-fg ${c}" data-w="${barPct}" style="width:0%"></div>
+            </div>
+          </div>
+         <div class="score-tip">
+            <span class="sbadge ${c}">${lbl}</span>
+            <div style="font-size:9px;color:var(--text3);margin-top:3px;font-family:var(--mono)">
+              score ${r.score.toFixed(3)} · corr ${r.correlation.toFixed(3)}
+            </div>
+            <div class="tip-box">
+              <div class="tip-row"><span style="color:var(--text3)">0.5 × ${r.correlation.toFixed(3)}</span><span>= ${(0.5 * r.correlation).toFixed(3)}</span><span style="color:var(--text4)">(corr)</span></div>
+              <div class="tip-row"><span style="color:var(--text3)">0.3 × ${r.stability.toFixed(3)}</span><span>= ${(0.3 * r.stability).toFixed(3)}</span><span style="color:var(--text4)">(stability)</span></div>
+              <div class="tip-row"><span style="color:var(--text3)">0.2 × ${r.vol_similarity.toFixed(3)}</span><span>= ${(0.2 * r.vol_similarity).toFixed(3)}</span><span style="color:var(--text4)">(vol match)</span></div>
+              <div class="tip-row tip-total"><span>Total Score</span><span>${r.score.toFixed(3)}</span></div>
+            </div>
+          </div>
+          <div class="mt">
+            ${r.volatility}%
+            ${r.stability_penalised ? `<span title="Stability below threshold · −0.1 score" style="color:var(--yellow);font-size:9px;margin-left:3px">⚠S</span>` : ""}
+            ${r.vol_sim_penalised   ? `<span title="Vol similarity below threshold · −0.1 score" style="color:var(--yellow);font-size:9px;margin-left:3px">⚠V</span>` : ""}
+          </div>
+        </div>`;
+    }).join("");
+
+    setTimeout(() => {
+      document.querySelectorAll(".bar-fg").forEach(b => { b.style.width = b.dataset.w + "%"; });
+    }, 60);
+  }
+
+  // ── Full Market Scan ────────────────────────────────────────────────────────
+
+  let _fmData = null;   // store last full-market result for filter
+
+  const fmFilterCorr  = document.getElementById("fm-filter-corr");
+  const fmFilterScore = document.getElementById("fm-filter-score");
+  const fmCorrDisp    = document.getElementById("fm-corr-display");
+  const fmScoreDisp   = document.getElementById("fm-score-display");
+  const fmScanBtn     = document.getElementById("fm-scan-btn");
+  const fmSec         = document.getElementById("fm-sec");
+  const fmGrid        = document.getElementById("fm-grid");
+  const fmBadge       = document.getElementById("fm-badge");
+  const fmStats       = document.getElementById("fm-stats");
+
+  function syncFmCorr()  { fmCorrDisp.textContent  = parseFloat(fmFilterCorr.value).toFixed(2); }
+  function syncFmScore() { fmScoreDisp.textContent = parseFloat(fmFilterScore.value).toFixed(2); }
+
+  fmFilterCorr.oninput  = syncFmCorr;
+  fmFilterScore.oninput = syncFmScore;
+
+  function makeFmStep(slider, syncFn) {
+    return dir => {
+      let v = Math.round((parseFloat(slider.value) + dir * 0.01) * 100) / 100;
+      v = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), v));
+      slider.value = v; syncFn();
+    };
+  }
+
+  document.getElementById("fm-corr-minus").onclick  = makeFmStep(fmFilterCorr,  syncFmCorr,  -1);
+  document.getElementById("fm-corr-plus").onclick   = makeFmStep(fmFilterCorr,  syncFmCorr,  +1);
+  document.getElementById("fm-score-minus").onclick = makeFmStep(fmFilterScore, syncFmScore, -1);
+  document.getElementById("fm-score-plus").onclick  = makeFmStep(fmFilterScore, syncFmScore, +1);
+
+  // Fix: makeFmStep needs direction baked in
+  document.getElementById("fm-corr-minus").onclick  = () => { let v = Math.round((parseFloat(fmFilterCorr.value)  - 0.01)*100)/100; fmFilterCorr.value  = Math.max(0.30, v); syncFmCorr(); };
+  document.getElementById("fm-corr-plus").onclick   = () => { let v = Math.round((parseFloat(fmFilterCorr.value)  + 0.01)*100)/100; fmFilterCorr.value  = Math.min(0.99, v); syncFmCorr(); };
+  document.getElementById("fm-score-minus").onclick = () => { let v = Math.round((parseFloat(fmFilterScore.value) - 0.01)*100)/100; fmFilterScore.value = Math.max(0.40, v); syncFmScore(); };
+  document.getElementById("fm-score-plus").onclick  = () => { let v = Math.round((parseFloat(fmFilterScore.value) + 0.01)*100)/100; fmFilterScore.value = Math.min(0.90, v); syncFmScore(); };
+
+  fmScanBtn.onclick = runFullMarketScan;
+
+  async function runFullMarketScan() {
+    const minCorr  = parseFloat(fmFilterCorr.value);
+    const minScore = parseFloat(fmFilterScore.value);
+
+    fmScanBtn.disabled = true;
+    fmScanBtn.textContent = "⟳ Scanning...";
+    document.getElementById("fm-auto-ind").style.display = "block";
+
+    // Hide single-ticker results, show full market area
+    statsGrid.style.display    = "none";
+    valSec.style.display       = "none";
+    chartsSec.style.display    = "none";
+    resSec.style.display       = "none";
+    emptyState.style.display   = "none";
+    fmSec.style.display        = "block";
+    fmGrid.innerHTML           = `<div class="fm-empty">⟳ Computing correlation matrix + scores…<br/><span style="font-size:11px;color:var(--text4)">adj corr ≥ ${minCorr.toFixed(2)} · score ≥ ${minScore.toFixed(2)} · takes ~5-15 sec</span></div>`;
+
+    try {
+      const res  = await fetch(`${API}/api/full-market?min_correlation=${minCorr}&min_score=${minScore}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Full market scan failed");
+      _fmData = data;
+      renderFullMarket(data);
+    } catch(e) {
+      fmGrid.innerHTML = `<div class="fm-empty">⚠️ ${e.message}</div>`;
+      toast(e.message);
+    } finally {
+      fmScanBtn.disabled = false;
+      fmScanBtn.textContent = "🌐 Scan All 160 Tickers";
+      document.getElementById("fm-auto-ind").style.display = "none";
+    }
+  }
+
+  function renderFullMarket(data) {
+    const results = data.results || {};
+    const keys    = Object.keys(results);
+
+    fmBadge.textContent = `${keys.length} tickers`;
+    fmStats.innerHTML = `
+      <div class="fm-stat">Scanned <span>${data.tickers_scanned}</span></div>
+      <div class="fm-stat">Pairs found <span>${data.total_pairs}</span></div>
+      <div class="fm-stat">Min corr <span>${data.min_correlation.toFixed(2)}</span></div>
+      <div class="fm-stat">Min score <span>${data.min_score?.toFixed(2) ?? "—"}</span></div>
+      <div class="fm-stat">Beta adj <span>${data.beta_adjustment ? "✅" : "⚠️"}</span></div>
+    `;
+
+    if (!keys.length) {
+      fmGrid.innerHTML = `<div class="fm-empty">No pairs found above corr=${data.min_correlation.toFixed(2)} + score=${data.min_score?.toFixed(2) ?? "—"}.<br/>Try lowering the sliders.</div>`;
+      return;
+    }
+
+    fmGrid.innerHTML = keys.map(ticker => buildFmRow(ticker, results[ticker])).join("");
+
+    // Expand/collapse rows
+    fmGrid.querySelectorAll(".fm-row-header").forEach(hdr => {
+      hdr.onclick = () => hdr.closest(".fm-row").classList.toggle("open");
+    });
+
+    // Click peer chip → single ticker search
+    fmGrid.querySelectorAll(".fm-peer-chip").forEach(chip => {
+      chip.onclick = e => {
+        e.stopPropagation();
+        tickerInput.value = chip.dataset.ticker;
+        debSearch(true);
+        document.querySelector(".main").scrollTo({ top: 0, behavior: "smooth" });
+      };
+    });
+  }
+
+  function buildFmRow(ticker, entry) {
+    const peers     = entry.peers || [];
+    const sector    = entry.sector !== "Unknown"
+      ? `<span class="sector-tag" style="margin-left:6px">${entry.sector}</span>` : "";
+    const bestScore = entry.best_score
+      ? `<span style="font-size:10px;font-family:var(--mono);color:var(--green);margin-left:6px">▲${entry.best_score.toFixed(3)}</span>` : "";
+
+    const peersHtml = peers.map(p => {
+      const c        = p.adj_corr >= 0.85 ? "high" : p.adj_corr >= 0.70 ? "medium" : "low";
+      const scoreClr = p.score >= 0.75 ? "var(--green)" : p.score >= 0.65 ? "var(--yellow)" : "var(--text3)";
+      const gap      = p.beta_gap != null
+        ? `<span style="font-size:9px;color:var(--text4)">Δ${p.beta_gap > 0 ? "+" : ""}${p.beta_gap.toFixed(2)}</span>` : "";
+      return `
+        <div class="fm-peer-chip" data-ticker="${p.ticker}"
+          title="${p.name} · adj: ${p.adj_corr.toFixed(4)} · raw: ${p.raw_corr?.toFixed(4) ?? "—"} · score: ${p.score.toFixed(4)} · stability: ${(p.stability*100).toFixed(0)}%">
+          <span class="fm-peer-ticker">${p.ticker}</span>
+          <span class="fm-peer-corr ${c}">${p.adj_corr.toFixed(3)}</span>
+          <span style="font-size:10px;font-family:var(--mono);color:${scoreClr}">s:${p.score.toFixed(2)}</span>
+          ${gap}
+        </div>`;
+    }).join("");
+
+    return `
+      <div class="fm-row" id="fmrow-${ticker.replace(/[^a-zA-Z0-9]/g,'_')}">
+        <div class="fm-row-header">
+          <span class="fm-anchor">${ticker}</span>
+          <span class="fm-anchor-name">${entry.name || ""}${sector}${bestScore}</span>
+          <span class="fm-peer-count">${peers.length} peers</span>
+          <span class="fm-chevron">▾</span>
+        </div>
+        <div class="fm-peers">${peersHtml}</div>
+      </div>`;
+  }
+
+  function filterFmResults() {
+    if (!_fmData) return;
+    const q = document.getElementById("fm-search").value.trim().toUpperCase();
+    if (!q) { renderFullMarket(_fmData); return; }
+    const filtered = {};
+    Object.entries(_fmData.results).forEach(([ticker, entry]) => {
+      const anchorMatch = ticker.includes(q) || (entry.name || "").toUpperCase().includes(q);
+      const peerMatch   = entry.peers.some(p => p.ticker.includes(q) || (p.name || "").toUpperCase().includes(q));
+      if (anchorMatch || peerMatch) filtered[ticker] = entry;
+    });
+    renderFullMarket({ ..._fmData, results: filtered });
+  }
+
+  loadTickers();
+</script>
+</body>
+</html>
