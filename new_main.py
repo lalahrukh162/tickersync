@@ -2,12 +2,6 @@
 ╔══════════════════════════════════════════════════════════╗
 ║         TICKER SIMILARITY ENGINE — FLASK BACKEND         ║
 ╚══════════════════════════════════════════════════════════╝
-
-WHY Flask and not FastAPI or Django?
-→ Flask: minimal, explicit, perfect for small APIs like this
-→ FastAPI: better for large APIs, async, auto-docs (good for production later)
-→ Django: full framework with ORM, admin, too heavy for this use case
-
 ENDPOINTS:
   GET  /api/tickers      → list of all tickers + date range
   GET  /api/config       → all default settings + slider ranges
@@ -35,7 +29,7 @@ CORS(app)
 
 # ── CONFIGURATION ──────────────────────────────────────────────────────────────
 
-DATA_FOLDER = os.environ.get("DATA_FOLDER", r"C:\Users\NEW_WORK_FOLDER\ohlcv_data\ohlcv_data")
+DATA_FOLDER = os.environ.get("DATA_FOLDER", r"C:\path\to\your\ohlcv_data")
 
 DEFAULTS = {
     "min_correlation": 0.60,
@@ -101,9 +95,6 @@ def load_all_returns(data_folder: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     prices_df = pd.DataFrame(close_prices)
     prices_df.index = pd.to_datetime(prices_df.index)
     prices_df.sort_index(inplace=True)
-
-    # fill_method=None → don't forward-fill NaN gaps before computing returns
-    # WHY? Filling would create fake 0% return days and distort correlation.
     returns_df = prices_df.pct_change(fill_method=None).dropna(how="all")
 
     print(f"✅ Loaded {len(prices_df.columns)} tickers | "
@@ -118,19 +109,6 @@ def load_spy_returns(returns_df: pd.DataFrame) -> pd.Series:
     """
     Load SPY returns for beta adjustment.
     Tries the data folder first, falls back to yfinance.
-
-    WHY SPY?
-    → Most universally accepted US market proxy.
-    → Alternatives: QQQ (Nasdaq-heavy), IWM (small-caps).
-
-    FIX 1: .squeeze() — modern yfinance (≥0.2) returns MultiIndex DataFrame.
-    → spy_raw["Close"] gives a single-column DataFrame, NOT a Series.
-    → .squeeze() converts single-column DataFrame → Series safely.
-
-    FIX 2: .tz_localize(None) — yfinance may return tz-aware DatetimeIndex.
-    → Your parquet data is tz-naive.
-    → Mixing tz-aware and tz-naive causes alignment failures.
-    → Strip timezone info so both indexes are comparable.
     """
     if "SPY" in returns_df.columns:
         print("  ✅ SPY found in local data — using as market benchmark")
@@ -140,14 +118,7 @@ def load_spy_returns(returns_df: pd.DataFrame) -> pd.Series:
     try:
         spy_raw = yf.download("SPY", start="2000-01-01",
                               progress=False, auto_adjust=True)
-
-        # FIX 1: squeeze() handles MultiIndex DataFrame from modern yfinance
         spy_returns = spy_raw["Close"].squeeze().pct_change(fill_method=None).dropna()
-
-        # FIX 2: strip timezone so index aligns with tz-naive parquet data.
-        # WHY conditional? → tz_localize(None) crashes if index is ALREADY tz-naive.
-        # yfinance sometimes returns tz-aware, sometimes tz-naive depending on version.
-        # Check first, strip only if needed — safe either way.
         idx = pd.to_datetime(spy_returns.index)
         spy_returns.index = idx.tz_localize(None) if idx.tz is not None else idx
 
@@ -170,15 +141,6 @@ METADATA_CACHE_DAYS = 7
 def fetch_single_ticker_meta(ticker: str) -> dict:
     """
     Fetch metadata with ETF detection and ticker format fallback.
-
-    WHY try multiple formats?
-    → Parquet filenames may use underscores (BRK_B) but Yahoo needs hyphens (BRK-B)
-    → Trying both costs one extra API call at most, saves many "Unknown" sectors
-
-    WHY detect ETFs separately?
-    → ETFs have no GICS sector — that's expected, not a failure
-    → Labeling them "ETF" + category is more informative than "Unknown"
-    → Prevents them from being confused with stocks that truly have no data
     """
     # Try original ticker first, then hyphen variant if underscore present
     variants = [ticker]
@@ -378,9 +340,6 @@ def compute_beta_adjusted_residuals(ticker_returns: pd.Series,
     → The latter is a stronger signal of genuine behavioral similarity.
 
     Beta formula: Cov(ticker, SPY) / Var(SPY) — identical to OLS regression slope.
-
-    Returns original series unchanged if insufficient SPY overlap (< 60 days).
-    This is graceful degradation — system keeps working without beta adjustment.
     """
     combined = pd.DataFrame({"ticker": ticker_returns, "spy": spy_returns}).dropna()
 
@@ -465,15 +424,6 @@ def search():
     print(f"   Window: {target_start} → {target_end} ({trading_days} days)")
     print(f"   Vol: {target_vol:.1f}% | Min corr: {min_corr} | Lookback: {lookback_days or 'ALL'}")
 
-    # ── FIX 2+3: Compute spy_window and target_resid ONCE before the loop ──────
-    #
-    # WHY outside the loop?
-    # → spy_window: SPY_RETURNS.reindex(returns.index) produces the same result
-    #   every iteration — computing it 160× inside the loop is pure waste.
-    # → target_resid: target_returns never changes during the loop.
-    #   Computing its residuals 160× is 160× redundant work.
-    # → Moving both outside = same result, ~160× less computation.
-
     spy_window = SPY_RETURNS.reindex(returns.index)
     beta_enabled = bool(SPY_RETURNS.notna().sum() > 60)
 
@@ -504,26 +454,7 @@ def search():
 
         if overlap < min_overlap:
             continue
-
-        # ── Raw (Pearson) correlation — always computed ────────────────────────
-        #
-        # WHY compute raw even when beta adjustment is enabled?
-        # → We need it for beta_gap = raw_corr - beta_adjusted_corr
-        # → beta_gap tells you: "how much of the similarity vanishes after
-        #   stripping market noise?"
-        # → Low gap → genuine peers. High gap → both just follow SPY.
-
         raw_corr = float(target_returns[valid].corr(other[valid]))
-
-        # ── Beta-adjusted correlation ──────────────────────────────────────────
-        #
-        # target_resid_full already computed above (once, not per-ticker).
-        # We only need to compute other_resid here (unique per ticker).
-        #
-        # WHY correlate residuals and not raw returns?
-        # → Raw correlation: "do both follow the market?"
-        # → Residual correlation: "do they share movement BEYOND market noise?"
-        # → Residual version is a stronger signal of genuine behavioral peers.
 
         if beta_enabled and target_resid_full is not None:
             other_resid = compute_beta_adjusted_residuals(
@@ -584,19 +515,6 @@ def search():
             target_sector != "Unknown"
         )
 
-        # ── Beta Gap ───────────────────────────────────────────────────────────
-        #
-        # WHY: beta_gap = raw_corr - beta_adjusted_corr
-        # → If the gap is large, the stocks' similarity is mostly because
-        #   both rise/fall with the market (SPY beta). Strip it and they diverge.
-        # → If the gap is small, their co-movement survives market stripping →
-        #   they are genuine behavioral peers independent of macro noise.
-        #
-        # Interpretation:
-        #   < 0.05  → GENUINE  (real similarity, not market-driven)
-        #   0.05–0.15 → MIXED  (partial genuine, partial market)
-        #   > 0.15  → MARKET-DRIVEN (just both following SPY)
-
         if beta_enabled:
             beta_gap = round(float(raw_corr - corr), 4)
         else:
@@ -636,45 +554,9 @@ def search():
 
     # Sort by composite score descending
     results.sort(key=lambda x: x["score"], reverse=True)
-
-    # Score gate — user-controlled from the dashboard slider
-    # WHY after sorting? → Score must be fully computed first.
-    # WHY not inside the loop? → Avoids computing stability/vol_sim for pairs
-    #   we'd only discard — but actually we compute those anyway for the composite.
-    #   Post-sort filter is cleaner and equally efficient.
-    # A result must pass BOTH min_corr (correlation gate) AND min_score (quality gate).
     results = [r for r in results if r["score"] >= min_score]
 
     # ── Build chart data (per-pair, overlap-anchored, dual mode) ──────────────
-    #
-    # WHY per-pair instead of one shared blob?
-    # → Old approach: send entire target history as one flat array, slice on
-    #   frontend by overlap_start/overlap_end. Problem: the % base price was
-    #   the ticker's all-time first price, so a ticker that existed for 3 years
-    #   before the overlap would arrive at the overlap window already at +80%
-    #   or -30%, making correlated pairs look completely different visually.
-    # → New approach: for each matched pair, slice PRICES_DF to exactly the
-    #   shared overlap window, then compute % / z-score from that window's
-    #   Day 0. Both tickers always start at 0% (or 0σ) on the same date.
-    #   This is what TradingView does when you compare two tickers.
-    #
-    # WHY send BOTH pct and zscore from the backend?
-    # → The frontend has a toggle (% Return | Z-Score). If we only sent one
-    #   mode, the user would have to re-fetch every time they switch. Sending
-    #   both means the toggle is instant — just swap which dataset Chart.js uses.
-    # → Data size is negligible: each pair's overlap is typically 200–800 rows
-    #   × 2 columns × 2 modes = small.
-    #
-    # Z-SCORE formula: (value - mean) / std  over the overlap window.
-    # → Removes both scale and level. Two tickers with identical shape but
-    #   one moving $1 and other $100 will overlap perfectly on z-score.
-    # → This is the standard quant visual for "do these move together?"
-    # → Mean and std are computed per ticker over its own overlap window only.
-    #
-    # % RETURN formula: (price / price_at_overlap_start - 1) * 100
-    # → Shows real gain/loss from the common starting point.
-    # → Correlated tickers track each other because scale is real % terms.
-    # → ffill() handles isolated NaN gaps (halted days) without breaking the line.
 
     chart_data_by_ticker: dict = {}
 
@@ -691,13 +573,6 @@ def search():
         # Slice to the exact overlap window for this pair
         pair_prices = PRICES_DF.loc[ov_start:ov_end, available].copy()
 
-        # ── FIX: Double lookback REMOVED ──────────────────────────────────────
-        # WHY removed? lookback_days was already applied to `returns` in STEP 1
-        # (line ~500). overlap_start/overlap_end were derived from that already-
-        # trimmed window. Applying lookback again here would cut the chart window
-        # shorter than the correlation window → number ≠ graph.
-        # The overlap window IS the correct window. No further slicing needed.
-
         if pair_prices.empty or len(pair_prices) < 2:
             continue
 
@@ -708,33 +583,10 @@ def search():
         base = pair_prices.apply(lambda col: col.dropna().iloc[0] if col.notna().any() else np.nan)
         pct  = ((pair_prices / base) - 1) * 100
         pct  = pct.round(4)
-
-        # ── Z-Score: standardize each ticker over this overlap window ──────────
-        # WHY dropna() before mean/std?
-        # → A ticker may have a few NaN rows even after ffill (e.g. at the very
-        #   start if it listed after the overlap started). Using those NaNs in
-        #   mean/std would produce NaN for the whole column. dropna() per column
-        #   ensures we compute stats only from real prices.
         mean = pair_prices.apply(lambda col: col.dropna().mean())
         std  = pair_prices.apply(lambda col: col.dropna().std())
         std  = std.replace(0, np.nan)   # avoid division by zero for flat lines
         zscore = ((pair_prices - mean) / std).round(4)
-
-        # ── Adj Return: beta-stripped cumulative returns ───────────────────────
-        #
-        # WHY? adj corr score is computed on SPY-residuals, not raw prices.
-        # So the "Adj Return" chart should also show SPY-stripped movement —
-        # this way the chart visually matches the adj corr number shown in label.
-        #
-        # HOW:
-        #   1. Get daily returns for the overlap window
-        #   2. Strip SPY beta from each ticker → residuals
-        #   3. Cumulative sum of residuals → cumulative "alpha" curve
-        #   4. Multiply by 100 → % terms, anchored at 0 on Day 0
-        #
-        # WHY cumsum (not cumprod)?
-        # → Residuals can be negative. cumprod of small residuals drifts badly.
-        # → cumsum is standard for residual/alpha charts in quant finance.
 
         adj_return_df = pd.DataFrame(index=pair_prices.index)
 
@@ -779,14 +631,6 @@ def search():
     print(f"   Chart: {len(chart_data_by_ticker)} pairs built (per-pair, overlap-anchored, pct+zscore)")
     print(f"   Suggested threshold: {suggested}")
 
-    # ── FIX: target_name, target_sector, cross_sector_count at TOP LEVEL ───────
-    #
-    # WHY here and not inside results.append()?
-    # → cross_sector_count needs the COMPLETE results list to count correctly.
-    #   Inside the loop, results is only partially built — count is always wrong.
-    # → target_name/sector are the same value for every result — sending them
-    #   once at the top level is cleaner and avoids 20× redundant repetition.
-
     return jsonify({
         "target":                target_ticker,
         "target_start":          target_start,
@@ -823,25 +667,6 @@ def full_market():
     """
     Compute pairwise correlations for ALL tickers at once.
     Returns grouped list: each ticker → its correlated peers above threshold.
-
-    STEP 1 — Vectorized correlation matrix (fast, ~2-3s):
-        pandas .corr() computes full N×N adj + raw matrices in one shot.
-
-    STEP 2 — Score computation (per qualifying pair only):
-        Only pairs that pass min_corr AND min_score gates get stability +
-        vol_similarity computed. This avoids computing expensive rolling
-        stability for the thousands of pairs that would be filtered anyway.
-        Typical 160-ticker scan: ~500-2000 qualifying pairs → still fast.
-
-    WHY not reuse /api/search 160×?
-        That would re-compute SPY residuals 160×, re-slice data 160×,
-        re-sort 160× — roughly 160× slower for the same result.
-
-    Query params:
-        min_correlation  (float, default 0.60) — minimum adj correlation
-        min_score        (float, default 0.65) — minimum composite score
-        min_overlap      (int,   default 100)  — minimum shared trading days
-        lookback_days    (int,   optional)     — limit history window
     """
     if RETURNS_DF.empty:
         return jsonify({"error": "No data loaded"}), 500
@@ -888,21 +713,9 @@ def full_market():
     raw_matrix  = returns.corr(min_periods=min_overlap)    # raw corr
     print(f"   Matrix done. Computing vol per ticker...")
 
-    # ── STEP 1C: Annualized vol per ticker (vectorized) ───────────────────────
-    # WHY precompute? vol_similarity needs vol_a and vol_b per pair.
-    # Computing it once per ticker (not per pair) saves N× work.
     vols = (returns.std() * np.sqrt(252) * 100).to_dict()
 
     print(f"   Filtering pairs above corr={min_corr}, score={min_score}...")
-
-    # ── STEP 2: Per-pair score computation (only for qualifying pairs) ─────────
-    #
-    # WHY not vectorize stability?
-    # → Rolling correlation requires per-pair series alignment — no matrix form.
-    # → But we only compute it for pairs already above min_corr, which is a
-    #   small fraction of the 160×160=25,600 possible pairs.
-    # → Typical result: 200-800 pairs above threshold → fast enough.
-
     grouped     = {}
     total_pairs = 0
     skipped_score = 0
@@ -1018,11 +831,9 @@ def index():
 
 if __name__ == "__main__":
     app.run(
-        debug=False,        # MUST be False when sharing — debug=True is a security hole
-        host="0.0.0.0",     # Listen on all interfaces (local + network)
-        port=5000,          # Change this if port 5000 is taken on your machine
-        threaded=True,      # Handle multiple users at once (one thread per request)
-                            # WHY threaded? Without it, Flask processes one request
-                            # at a time — if one user triggers a full market scan
-                            # (slow), every other user is frozen waiting.
+        debug=False,     
+        host="0.0.0.0",     
+        port=5000,          
+        threaded=True,      
+
     )
