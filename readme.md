@@ -581,7 +581,7 @@ erDiagram
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-repo/tickersync.git
+git clone https://github.com/lalahrukh162/tickersync.git
 cd tickersync
 ```
 
